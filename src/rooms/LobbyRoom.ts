@@ -39,10 +39,31 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
     console.log("LobbyRoom created");
   }
 
-  onJoin(client: Client, options: { nickname?: string }) {
+  onJoin(client: Client, options: { nickname?: string; googleId?: string; displayName?: string; photoUrl?: string }) {
+    const googleId = options.googleId;
+
+    // Reject if no googleId
+    if (!googleId) {
+      client.leave();
+      return;
+    }
+
+    // Unique session: disconnect previous login with same googleId
+    this.state.players.forEach((existingPlayer, sessionId) => {
+      if (existingPlayer.googleId === googleId && sessionId !== client.sessionId) {
+        const oldClient = this.clients.find((c) => c.sessionId === sessionId);
+        if (oldClient) {
+          oldClient.send("kicked", { reason: "Outra sessao foi iniciada" });
+          oldClient.leave();
+        }
+      }
+    });
+
     const player = new PlayerState();
     player.sessionId = client.sessionId;
-    player.nickname = options.nickname || `Player_${client.sessionId.slice(0, 4)}`;
+    player.googleId = googleId;
+    player.nickname = (options.displayName || options.nickname || "Jogador").substring(0, 50);
+    player.photoUrl = options.photoUrl || "";
     player.presence = "online";
     player.joinedAt = Date.now();
 
