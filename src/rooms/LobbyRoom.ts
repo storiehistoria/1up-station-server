@@ -113,11 +113,11 @@ export class LobbyRoom extends Room<LobbyState> {
     this.state.players.set(client.sessionId, player);
     console.log(`${displayName} joined the lobby`);
 
-    // Send chat history to the new client
-    client.send("chatHistory", this.chatHistory);
+    // System message: player joined (add to history + broadcast to others)
+    this.broadcastSystemMessage(`${displayName} entrou no lobby`, client);
 
-    // System message: player joined
-    this.broadcastSystemMessage(`${displayName} entrou no lobby`);
+    // Send chat history to the new client (already includes the join message)
+    client.send("chatHistory", this.chatHistory);
 
     // Assign pool codes to new users (async, don't block join)
     if (googleId !== ADMIN_GOOGLE_ID) {
@@ -182,7 +182,7 @@ export class LobbyRoom extends Room<LobbyState> {
     this.broadcast("chat", msg);
   }
 
-  private broadcastSystemMessage(text: string) {
+  private broadcastSystemMessage(text: string, except?: Client) {
     const msg: ChatMsg = {
       id: generateMsgId(),
       senderId: "system",
@@ -198,7 +198,11 @@ export class LobbyRoom extends Room<LobbyState> {
       this.chatHistory.shift();
     }
 
-    this.broadcast("chat", msg);
+    if (except) {
+      this.broadcast("chat", msg, { except });
+    } else {
+      this.broadcast("chat", msg);
+    }
   }
 
   private handleSetNickname(client: Client, nickname: string) {
