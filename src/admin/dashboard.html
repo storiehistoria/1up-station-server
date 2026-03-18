@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>1UP Station - Admin</title>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; }
@@ -13,7 +12,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 #login-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; gap: 24px; }
 #login-screen h1 { font-size: 2rem; color: #7c6aff; }
 #login-screen p { color: #888; }
-#login-error { color: #ff4444; display: none; margin-top: 12px; }
+.btn-login { background: #7c6aff; color: white; border: none; padding: 12px 32px; border-radius: 8px; font-size: 1rem; cursor: pointer; text-decoration: none; display: inline-block; font-weight: 500; }
+.btn-login:hover { background: #6b5ce7; }
 
 /* Dashboard */
 #dashboard { display: none; max-width: 1100px; margin: 0 auto; padding: 24px; }
@@ -24,7 +24,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .header-user { display: flex; align-items: center; gap: 12px; }
 .header-user img { width: 32px; height: 32px; border-radius: 50%; }
 .header-user span { color: #aaa; font-size: 0.9rem; }
-.btn-logout { background: none; border: 1px solid #444; color: #aaa; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+.btn-logout { background: none; border: 1px solid #444; color: #aaa; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; text-decoration: none; }
 .btn-logout:hover { border-color: #ff4444; color: #ff4444; }
 
 /* Stats */
@@ -94,19 +94,7 @@ tr:hover td { background: #1a1a2e; }
 <div id="login-screen">
   <h1>1UP Station Admin</h1>
   <p>Acesso restrito. Faca login com o Google do admin.</p>
-  <div id="g_id_onload"
-    data-client_id="89999411836-mi24elqjnuofqfh24qg5rvnld8o5vqic.apps.googleusercontent.com"
-    data-callback="handleCredentialResponse"
-    data-auto_prompt="false">
-  </div>
-  <div class="g_id_signin"
-    data-type="standard"
-    data-size="large"
-    data-theme="filled_black"
-    data-text="signin_with"
-    data-shape="rectangular">
-  </div>
-  <div id="login-error">Acesso negado. Apenas o admin pode acessar.</div>
+  <a class="btn-login" href="/admin/auth/login">Login com Google</a>
 </div>
 
 <!-- DASHBOARD -->
@@ -117,7 +105,7 @@ tr:hover td { background: #1a1a2e; }
     <div class="header-user">
       <img id="admin-photo" src="" alt="">
       <span id="admin-name"></span>
-      <button class="btn-logout" onclick="logout()">Sair</button>
+      <a class="btn-logout" href="/admin/auth/logout">Sair</a>
     </div>
   </div>
 
@@ -182,50 +170,55 @@ tr:hover td { background: #1a1a2e; }
 </div>
 
 <script>
-let TOKEN = null;
 let allInvites = [];
 let currentFilter = 'all';
 
-// --- Google Sign-In ---
-function handleCredentialResponse(response) {
-  const jwt = response.credential;
-  // Decode payload to get user info
-  const payload = JSON.parse(atob(jwt.split('.')[1]));
-
-  // Test auth by calling stats endpoint
-  fetch('/admin/api/stats', { headers: { 'Authorization': 'Bearer ' + jwt } })
-    .then(r => {
-      if (r.status === 403) {
-        document.getElementById('login-error').style.display = 'block';
-        return;
-      }
-      TOKEN = jwt;
+// --- Check auth on load ---
+(async function checkAuth() {
+  try {
+    const res = await fetch('/admin/api/stats');
+    if (res.ok) {
+      // Authenticated — show dashboard
       document.getElementById('login-screen').style.display = 'none';
       document.getElementById('dashboard').style.display = 'block';
-      document.getElementById('admin-photo').src = payload.picture || '';
-      document.getElementById('admin-name').textContent = payload.name || payload.email;
-      loadAll();
-    })
-    .catch(() => {
-      document.getElementById('login-error').style.display = 'block';
-    });
-}
 
-function logout() {
-  TOKEN = null;
-  document.getElementById('dashboard').style.display = 'none';
-  document.getElementById('login-screen').style.display = 'flex';
-  google.accounts.id.disableAutoSelect();
-}
+      // Read user info from cookie
+      try {
+        const cookies = document.cookie.split(';').reduce((acc, c) => {
+          const [k, ...v] = c.trim().split('=');
+          if (k) acc[k] = decodeURIComponent(v.join('='));
+          return acc;
+        }, {});
+        if (cookies.admin_user) {
+          const info = JSON.parse(atob(cookies.admin_user));
+          document.getElementById('admin-photo').src = info.picture || '';
+          document.getElementById('admin-name').textContent = info.name || 'Admin';
+        }
+      } catch {}
+
+      loadAll();
+    }
+    // If not ok (403), login screen stays visible
+  } catch {
+    // Network error — login screen stays visible
+  }
+})();
 
 // --- API helpers ---
 function api(method, path, body) {
   const opts = {
     method,
-    headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
   };
   if (body) opts.body = JSON.stringify(body);
-  return fetch(path, opts).then(r => r.json());
+  return fetch(path, opts).then(r => {
+    if (r.status === 403) {
+      // Session expired — redirect to login
+      window.location.href = '/admin/auth/login';
+      throw new Error('Session expired');
+    }
+    return r.json();
+  });
 }
 
 // --- Load data ---
@@ -252,7 +245,6 @@ async function loadUsers() {
     users.forEach(u => {
       const date = new Date(u.registeredAt).toLocaleDateString('pt-BR');
       const isAdmin = u.isAdmin;
-      // Count invites for this user
       const userInvites = allInvites.filter(i => i.createdBy === u.googleId);
       const usedCount = userInvites.filter(i => i.usedBy).length;
 
@@ -281,7 +273,6 @@ async function loadInvites() {
     renderInvites();
     document.getElementById('invites-loading').style.display = 'none';
     document.getElementById('invites-table').style.display = 'table';
-    // Reload users table to update invite counts
     loadUsers();
   } catch {}
 }
