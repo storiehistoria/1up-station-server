@@ -29,6 +29,12 @@ interface InvitesData {
   invites: InviteData[];
 }
 
+export interface BanData {
+  type: "temporary" | "permanent";
+  until?: string;
+  reason: string;
+}
+
 export interface UserData {
   googleId: string;
   displayName: string;
@@ -38,6 +44,7 @@ export interface UserData {
   invitesRemaining: number;
   isAdmin: boolean;
   registeredAt: string;
+  ban?: BanData | null;
 }
 
 interface UsersData {
@@ -408,4 +415,139 @@ export async function invalidateInvite(code: string): Promise<boolean> {
     console.log(`Invite invalidated: ${code}`);
     return true;
   });
+}
+
+// --- Ban/Unban ---
+
+export async function banUser(
+  googleId: string,
+  type: "temporary" | "permanent",
+  days?: number
+): Promise<boolean> {
+  return await withRetry(async () => {
+    const usersFile = await readFile<UsersData>(USERS_PATH);
+    const user = usersFile.parsed.users.find((u) => u.googleId === googleId);
+    if (!user) return false;
+
+    const ban: BanData = { type, reason: "admin action" };
+    if (type === "temporary" && days) {
+      const until = new Date();
+      until.setDate(until.getDate() + days);
+      ban.until = until.toISOString();
+    }
+    user.ban = ban;
+
+    await writeFile(
+      USERS_PATH,
+      usersFile.parsed,
+      usersFile.sha,
+      `Ban ${type}: ${user.displayName}${days ? ` (${days}d)` : ""}`
+    );
+
+    console.log(`User banned: ${user.displayName} (${type}${days ? `, ${days}d` : ""})`);
+    return true;
+  });
+}
+
+export async function unbanUser(googleId: string): Promise<boolean> {
+  return await withRetry(async () => {
+    const usersFile = await readFile<UsersData>(USERS_PATH);
+    const user = usersFile.parsed.users.find((u) => u.googleId === googleId);
+    if (!user || !user.ban) return false;
+
+    const userName = user.displayName;
+    user.ban = null;
+
+    await writeFile(
+      USERS_PATH,
+      usersFile.parsed,
+      usersFile.sha,
+      `Unbanned: ${userName}`
+    );
+
+    console.log(`User unbanned: ${userName}`);
+    return true;
+  });
+}
+
+// --- Admin action log ---
+
+const LOG_PATH = "invites/admin-log.json";
+
+export interface AdminLogEntry {
+  timestamp: string;
+  action: string;
+  target: string;
+  targetId: string;
+  details: string;
+  admin: string;
+}
+
+interface AdminLogData {
+  logs: AdminLogEntry[];
+}
+
+export async function addAdminLog(
+  action: string,
+  target: string,
+  targetId: string,
+  details: string
+): Promise<void> {
+  try {
+    await withRetry(async () => {
+      let logFile: { parsed: AdminLogData; sha: string };
+      try {
+        logFile = await readFile<AdminLogData>(LOG_PATH);
+      } catch {
+        // File doesn't exist yet — create it
+        logFile = { parsed: { logs: [] }, sha: "" };
+      }
+
+      logFile.parsed.logs.unshift({
+        timestamp: new Date().toISOString(),
+        action,
+        target,
+        targetId,
+        details,
+        admin: "stories english",
+      });
+
+      // Keep max 500 entries
+      if (logFile.parsed.logs.length > 500) {
+        logFile.parsed.logs = logFile.parsed.logs.slice(0, 500);
+      }
+
+      if (logFile.sha) {
+        await writeFile(LOG_PATH, logFile.parsed, logFile.sha, `Log: ${action} - ${target}`);
+      } else {
+        // Create the file for the first time
+        const res = await fetch(
+          `https://api.github.com/repos/${process.env.GITHUB_REPO || "storiehistoria/-1up-station-data"}/contents/${LOG_PATH}`,
+          {
+            method: "PUT",
+            headers: {
+              Authorization: `token ${process.env.GITHUB_TOKEN || ""}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              message: `Log: ${action} - ${target}`,
+              content: Buffer.from(JSON.stringify(logFile.parsed, null, 2)).toString("base64"),
+            }),
+          }
+        );
+        if (!res.ok) throw new Error(`Create log failed: ${res.status}`);
+      }
+    });
+  } catch (err) {
+    console.error("Failed to write admin log:", err);
+  }
+}
+
+export async function getAdminLogs(limit = 50): Promise<AdminLogEntry[]> {
+  try {
+    const { parsed } = await readFile<AdminLogData>(LOG_PATH);
+    return parsed.logs.slice(0, limit);
+  } catch {
+    return [];
+  }
 }

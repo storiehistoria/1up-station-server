@@ -49,6 +49,25 @@ export class LobbyRoom extends Room<LobbyState> {
       return;
     }
 
+    // Check if user is banned
+    const userData = await findUser(googleId);
+    if (userData?.ban) {
+      if (userData.ban.type === "permanent") {
+        client.send("banned", { message: "Seu acesso foi revogado." });
+        client.leave();
+        return;
+      }
+      if (userData.ban.type === "temporary" && userData.ban.until) {
+        const until = new Date(userData.ban.until);
+        if (until > new Date()) {
+          const dateStr = until.toLocaleDateString("pt-BR");
+          client.send("banned", { message: `Seu acesso foi suspenso ate ${dateStr}.` });
+          client.leave();
+          return;
+        }
+      }
+    }
+
     // Unique session: disconnect previous login with same googleId
     this.state.players.forEach((existingPlayer, sessionId) => {
       if (existingPlayer.googleId === googleId && sessionId !== client.sessionId) {

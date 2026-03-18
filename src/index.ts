@@ -20,6 +20,10 @@ import {
   revokeUser,
   invalidateInvite,
   addInvitesToUser,
+  banUser,
+  unbanUser,
+  addAdminLog,
+  getAdminLogs,
 } from "./services/InvitePool";
 
 const port = Number(process.env.PORT) || 2567;
@@ -239,6 +243,7 @@ app.post("/admin/api/pool/generate", requireAdmin, async (req, res) => {
     const quantidade = Number(req.body.quantidade) || 100;
     const generated = await generatePool(quantidade);
     const poolSize = await getPoolSize();
+    await addAdminLog("pool_generate", "Pool", "", `${generated} codigos gerados`);
     res.json({ generated, poolSize });
   } catch (err: any) {
     console.error("Pool generate failed:", err);
@@ -251,6 +256,8 @@ app.post("/admin/api/users/:id/add-invites", requireAdmin, async (req, res) => {
     const googleId = req.params.id as string;
     const quantidade = Number(req.body.quantidade) || 3;
     const codes = await addInvitesToUser(googleId, quantidade);
+    const user = await findUser(googleId);
+    await addAdminLog("add_invites", user?.displayName || googleId, googleId, `+${codes.length} convites`);
     res.json({ success: true, added: codes.length });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -259,7 +266,10 @@ app.post("/admin/api/users/:id/add-invites", requireAdmin, async (req, res) => {
 
 app.post("/admin/api/users/:id/revoke", requireAdmin, async (req, res) => {
   try {
-    const success = await revokeUser(req.params.id as string);
+    const googleId = req.params.id as string;
+    const user = await findUser(googleId);
+    const success = await revokeUser(googleId);
+    if (success) await addAdminLog("revoke", user?.displayName || googleId, googleId, "Revogado");
     res.json({ success });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -268,8 +278,51 @@ app.post("/admin/api/users/:id/revoke", requireAdmin, async (req, res) => {
 
 app.post("/admin/api/invites/:code/invalidate", requireAdmin, async (req, res) => {
   try {
-    const success = await invalidateInvite(req.params.code as string);
+    const code = req.params.code as string;
+    const success = await invalidateInvite(code);
+    if (success) await addAdminLog("invalidate_invite", code, "", "Convite invalidado");
     res.json({ success });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Ban/Unban routes ---
+
+app.post("/admin/api/users/:id/ban", requireAdmin, async (req, res) => {
+  try {
+    const googleId = req.params.id as string;
+    const { type, days } = req.body;
+    const user = await findUser(googleId);
+    const success = await banUser(googleId, type, days);
+    if (success) {
+      const details = type === "temporary" ? `${days} dias` : "Permanente";
+      await addAdminLog(`ban_${type}`, user?.displayName || googleId, googleId, details);
+    }
+    res.json({ success });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/admin/api/users/:id/unban", requireAdmin, async (req, res) => {
+  try {
+    const googleId = req.params.id as string;
+    const user = await findUser(googleId);
+    const success = await unbanUser(googleId);
+    if (success) await addAdminLog("unban", user?.displayName || googleId, googleId, "Desbanido");
+    res.json({ success });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Admin logs route ---
+
+app.get("/admin/api/logs", requireAdmin, async (_req, res) => {
+  try {
+    const logs = await getAdminLogs(50);
+    res.json({ logs });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
