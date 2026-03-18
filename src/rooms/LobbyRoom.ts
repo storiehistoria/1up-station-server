@@ -69,15 +69,21 @@ export class LobbyRoom extends Room<LobbyState> {
     }
 
     // Unique session: disconnect previous login with same googleId
+    const toRemove: string[] = [];
     this.state.players.forEach((existingPlayer, sessionId) => {
       if (existingPlayer.googleId === googleId && sessionId !== client.sessionId) {
-        const oldClient = this.clients.find((c) => c.sessionId === sessionId);
-        if (oldClient) {
-          oldClient.send("kicked", { reason: "Outra sessao foi iniciada" });
-          oldClient.leave();
-        }
+        toRemove.push(sessionId);
       }
     });
+    for (const sessionId of toRemove) {
+      // Remove from state immediately to avoid duplicate in player list
+      this.state.players.delete(sessionId);
+      const oldClient = this.clients.find((c) => c.sessionId === sessionId);
+      if (oldClient) {
+        oldClient.send("kicked", { reason: "Outra sessao foi iniciada" });
+        oldClient.leave();
+      }
+    }
 
     const displayName = (options.displayName || options.nickname || "Jogador").substring(0, 50);
 
