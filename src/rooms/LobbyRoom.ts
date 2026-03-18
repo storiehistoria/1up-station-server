@@ -3,6 +3,7 @@ import { LobbyState } from "../schemas/LobbyState";
 import { PlayerState, Presence } from "../schemas/PlayerState";
 import { ChatMessage } from "../schemas/ChatMessage";
 import { Invite } from "../schemas/Invite";
+import { findUser, assignCodesToNewUser, ADMIN_GOOGLE_ID } from "../services/InvitePool";
 
 const MAX_CHAT_HISTORY = 50;
 
@@ -39,7 +40,7 @@ export class LobbyRoom extends Room<LobbyState> {
     console.log("LobbyRoom created");
   }
 
-  onJoin(client: Client, options: { nickname?: string; googleId?: string; displayName?: string; photoUrl?: string }) {
+  async onJoin(client: Client, options: { nickname?: string; googleId?: string; displayName?: string; photoUrl?: string; email?: string }) {
     const googleId = options.googleId;
 
     // Reject if no googleId
@@ -59,16 +60,35 @@ export class LobbyRoom extends Room<LobbyState> {
       }
     });
 
+    const displayName = (options.displayName || options.nickname || "Jogador").substring(0, 50);
+
     const player = new PlayerState();
     player.sessionId = client.sessionId;
     player.googleId = googleId;
-    player.nickname = (options.displayName || options.nickname || "Jogador").substring(0, 50);
+    player.nickname = displayName;
     player.photoUrl = options.photoUrl || "";
     player.presence = "online";
     player.joinedAt = Date.now();
 
     this.state.players.set(client.sessionId, player);
-    console.log(`${player.nickname} joined the lobby`);
+    console.log(`${displayName} joined the lobby`);
+
+    // Assign pool codes to new users (async, don't block join)
+    if (googleId !== ADMIN_GOOGLE_ID) {
+      this.assignPoolCodes(googleId, displayName, options.email || "", options.photoUrl || "").catch((err) => {
+        console.error(`Failed to assign pool codes to ${displayName}:`, err);
+      });
+    }
+  }
+
+  private async assignPoolCodes(googleId: string, displayName: string, email: string, photoUrl: string) {
+    const existing = await findUser(googleId);
+    if (existing) return; // Already registered, skip
+
+    const codes = await assignCodesToNewUser(googleId, displayName, email, photoUrl, "POOL");
+    if (codes.length > 0) {
+      console.log(`Assigned ${codes.length} pool codes to ${displayName}`);
+    }
   }
 
   onLeave(client: Client) {
