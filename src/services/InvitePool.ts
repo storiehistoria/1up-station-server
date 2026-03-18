@@ -261,6 +261,75 @@ export async function validateInvite(code: string): Promise<{ valid: boolean; cr
   }
 }
 
+/**
+ * Give extra invite codes to an existing user from the pool.
+ * Returns the codes assigned, or empty array if pool is empty.
+ */
+export async function addInvitesToUser(
+  googleId: string,
+  quantity: number
+): Promise<string[]> {
+  return await withRetry(async () => {
+    // Read pool
+    const poolFile = await readFile<PoolData>(POOL_PATH);
+    if (poolFile.parsed.pool.length === 0) {
+      return [];
+    }
+
+    // Read user to get displayName
+    const usersFile = await readFile<UsersData>(USERS_PATH);
+    const user = usersFile.parsed.users.find((u) => u.googleId === googleId);
+    if (!user) throw new Error("User not found");
+
+    // Take codes from pool
+    const taken = poolFile.parsed.pool.splice(0, Math.min(quantity, poolFile.parsed.pool.length));
+
+    await writeFile(
+      POOL_PATH,
+      poolFile.parsed,
+      poolFile.sha,
+      `Pool: +${taken.length} extras to ${user.displayName}`
+    );
+
+    // Add invite entries
+    await withRetry(async () => {
+      const invitesFile = await readFile<InvitesData>(INVITES_PATH);
+
+      for (const code of taken) {
+        invitesFile.parsed.invites.push({
+          code,
+          createdBy: googleId,
+          createdByName: user.displayName,
+          createdAt: new Date().toISOString(),
+          usedBy: null,
+          usedByName: null,
+          usedAt: null,
+        });
+      }
+
+      await writeFile(
+        INVITES_PATH,
+        invitesFile.parsed,
+        invitesFile.sha,
+        `+${taken.length} extra invites for ${user.displayName}`
+      );
+    });
+
+    // Update user's invitesRemaining
+    await withRetry(async () => {
+      const uf = await readFile<UsersData>(USERS_PATH);
+      const u = uf.parsed.users.find((u) => u.googleId === googleId);
+      if (u) {
+        u.invitesRemaining = (u.invitesRemaining || 0) + taken.length;
+      }
+      await writeFile(USERS_PATH, uf.parsed, uf.sha, `Updated invites for ${user.displayName}`);
+    });
+
+    console.log(`Added ${taken.length} extra codes to ${user.displayName}: ${taken.join(", ")}`);
+    return taken;
+  });
+}
+
 // --- Admin dashboard functions ---
 
 export interface AdminStats {

@@ -157,6 +157,22 @@ tr:hover td { background: #1a1a2e; }
   </div>
 </div>
 
+<!-- Add Invites Modal -->
+<div class="modal-overlay" id="add-invites-modal">
+  <div class="modal">
+    <h3 id="add-invites-title">Dar convites</h3>
+    <p id="add-invites-message"></p>
+    <div style="margin-bottom:20px">
+      <label style="color:#aaa;font-size:0.9rem">Quantidade:</label>
+      <input type="number" id="add-invites-qty" value="3" min="1" max="100" style="background:#1a1a2e;border:1px solid #333;color:#e0e0e0;padding:8px 12px;border-radius:6px;width:80px;font-size:0.95rem;margin-left:8px">
+    </div>
+    <div class="modal-buttons">
+      <button class="btn" style="background:#333;color:#aaa" onclick="closeAddInvitesModal()">Cancelar</button>
+      <button class="btn btn-primary" id="add-invites-confirm">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Confirm Modal -->
 <div class="modal-overlay" id="confirm-modal">
   <div class="modal">
@@ -256,7 +272,7 @@ async function loadUsers() {
         <td>${date}</td>
         <td>${esc(u.invitedBy)}</td>
         <td>${usedCount}/${userInvites.length}</td>
-        <td>${!isAdmin ? '<button class="btn btn-danger btn-small" onclick="confirmRevoke(\'' + u.googleId + '\', \'' + esc(u.displayName) + '\')">Revogar</button>' : ''}</td>
+        <td>${!isAdmin ? '<button class="btn btn-primary btn-small" onclick="openAddInvites(\'' + u.googleId + '\', \'' + esc(u.displayName) + '\')" style="margin-right:6px">+ Convites</button><button class="btn btn-danger btn-small" onclick="confirmRevoke(\'' + u.googleId + '\', \'' + esc(u.displayName) + '\')">Revogar</button>' : ''}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -369,6 +385,35 @@ function confirmInvalidate(code) {
     await api('POST', `/admin/api/invites/${code}/invalidate`);
     await loadAll();
   });
+}
+
+// --- Add Invites Modal ---
+function openAddInvites(googleId, name) {
+  document.getElementById('add-invites-title').textContent = 'Dar convites para ' + name;
+  document.getElementById('add-invites-message').textContent = 'Quantos convites extras deseja dar?';
+  document.getElementById('add-invites-qty').value = '3';
+  document.getElementById('add-invites-modal').classList.add('active');
+
+  const confirmBtn = document.getElementById('add-invites-confirm');
+  const newBtn = confirmBtn.cloneNode(true);
+  confirmBtn.parentNode.replaceChild(newBtn, confirmBtn);
+  newBtn.id = 'add-invites-confirm';
+  newBtn.addEventListener('click', async () => {
+    const qty = parseInt(document.getElementById('add-invites-qty').value) || 3;
+    newBtn.disabled = true;
+    newBtn.textContent = 'Adicionando...';
+    try {
+      const data = await api('POST', '/admin/api/users/' + googleId + '/add-invites', { quantidade: qty });
+      closeAddInvitesModal();
+      await loadAll();
+    } catch {}
+    newBtn.disabled = false;
+    newBtn.textContent = 'Confirmar';
+  });
+}
+
+function closeAddInvitesModal() {
+  document.getElementById('add-invites-modal').classList.remove('active');
 }
 
 // --- Helpers ---

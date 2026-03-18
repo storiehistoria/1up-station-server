@@ -19,6 +19,7 @@ import {
   getAllInvites,
   revokeUser,
   invalidateInvite,
+  addInvitesToUser,
 } from "./services/InvitePool";
 
 const port = Number(process.env.PORT) || 2567;
@@ -241,6 +242,17 @@ app.post("/admin/api/pool/generate", requireAdmin, async (req, res) => {
     res.json({ generated, poolSize });
   } catch (err: any) {
     console.error("Pool generate failed:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/admin/api/users/:id/add-invites", requireAdmin, async (req, res) => {
+  try {
+    const googleId = req.params.id as string;
+    const quantidade = Number(req.body.quantidade) || 3;
+    const codes = await addInvitesToUser(googleId, quantidade);
+    res.json({ success: true, added: codes.length });
+  } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
