@@ -400,6 +400,7 @@ export class LobbyRoom extends Room<LobbyState> {
     machine.gameName = gameName;
     machine.maxPlayers = maxPlayers;
     machine.isOpenRoom = data.isOpenRoom;
+    machine.openedAt = Date.now();
     machine.playerGoogleIds.push(player.googleId);
     machine.playerNicknames.push(player.nickname);
 
@@ -537,6 +538,7 @@ export class LobbyRoom extends Room<LobbyState> {
     machine.gameName = "";
     machine.maxPlayers = 0;
     machine.isOpenRoom = true;
+    machine.openedAt = 0;
     machine.playerGoogleIds.clear();
     machine.playerNicknames.clear();
   }

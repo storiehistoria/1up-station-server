@@ -13,4 +13,5 @@ export class MachineState extends Schema {
   @type(["string"]) playerGoogleIds = new ArraySchema<string>();
   @type(["string"]) playerNicknames = new ArraySchema<string>();
   @type("boolean") isOpenRoom: boolean = true;
+  @type("number") openedAt: number = 0;
 }
