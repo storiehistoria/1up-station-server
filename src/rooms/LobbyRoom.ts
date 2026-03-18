@@ -11,7 +11,7 @@ function generateInviteId(): string {
   return `inv_${Date.now()}_${++inviteCounter}`;
 }
 
-export class LobbyRoom extends Room<{ state: LobbyState }> {
+export class LobbyRoom extends Room<LobbyState> {
   onCreate() {
     this.state = new LobbyState();
     this.maxClients = 100;
