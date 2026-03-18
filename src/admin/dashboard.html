@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1UP Station - Admin</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; }
+
+/* Login */
+#login-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; gap: 24px; }
+#login-screen h1 { font-size: 2rem; color: #7c6aff; }
+#login-screen p { color: #888; }
+#login-error { color: #ff4444; display: none; margin-top: 12px; }
+
+/* Dashboard */
+#dashboard { display: none; max-width: 1100px; margin: 0 auto; padding: 24px; }
+
+/* Header */
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; padding-bottom: 16px; border-bottom: 1px solid #222; }
+.header h1 { font-size: 1.5rem; color: #7c6aff; }
+.header-user { display: flex; align-items: center; gap: 12px; }
+.header-user img { width: 32px; height: 32px; border-radius: 50%; }
+.header-user span { color: #aaa; font-size: 0.9rem; }
+.btn-logout { background: none; border: 1px solid #444; color: #aaa; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+.btn-logout:hover { border-color: #ff4444; color: #ff4444; }
+
+/* Stats */
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+.stat-card { background: #14141f; border: 1px solid #222; border-radius: 12px; padding: 20px; text-align: center; }
+.stat-card .number { font-size: 2rem; font-weight: 700; color: #7c6aff; }
+.stat-card .label { font-size: 0.85rem; color: #888; margin-top: 4px; }
+
+/* Sections */
+.section { background: #14141f; border: 1px solid #222; border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+.section h2 { font-size: 1.1rem; color: #ccc; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+
+/* Pool */
+.pool-controls { display: flex; gap: 12px; align-items: center; }
+.pool-controls input { background: #1a1a2e; border: 1px solid #333; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; width: 120px; font-size: 0.95rem; }
+.pool-controls input:focus { outline: none; border-color: #7c6aff; }
+.pool-result { margin-top: 12px; color: #4ade80; font-size: 0.9rem; display: none; }
+
+/* Buttons */
+.btn { padding: 8px 18px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: opacity 0.2s; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: #7c6aff; color: white; }
+.btn-primary:hover:not(:disabled) { background: #6b5ce7; }
+.btn-danger { background: #ff4444; color: white; }
+.btn-danger:hover:not(:disabled) { background: #e03333; }
+.btn-small { padding: 4px 10px; font-size: 0.8rem; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; color: #888; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 12px; border-bottom: 1px solid #222; }
+td { padding: 10px 12px; border-bottom: 1px solid #1a1a2e; font-size: 0.9rem; vertical-align: middle; }
+tr:hover td { background: #1a1a2e; }
+.user-photo { width: 28px; height: 28px; border-radius: 50%; vertical-align: middle; }
+.google-id { font-size: 0.75rem; color: #666; font-family: monospace; }
+
+/* Filters */
+.filters { display: flex; gap: 8px; margin-bottom: 16px; }
+.filter-btn { background: #1a1a2e; border: 1px solid #333; color: #aaa; padding: 5px 14px; border-radius: 20px; cursor: pointer; font-size: 0.8rem; }
+.filter-btn.active { background: #7c6aff; border-color: #7c6aff; color: white; }
+
+/* Status badges */
+.badge { padding: 3px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 500; }
+.badge-available { background: #1a3a2a; color: #4ade80; }
+.badge-used { background: #3a2a1a; color: #f59e0b; }
+.badge-admin { background: #2a1a3a; color: #a78bfa; }
+
+/* Loading */
+.loading { text-align: center; padding: 40px; color: #666; }
+
+/* Confirm dialog */
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
+.modal-overlay.active { display: flex; }
+.modal { background: #14141f; border: 1px solid #333; border-radius: 12px; padding: 24px; max-width: 400px; width: 90%; }
+.modal h3 { margin-bottom: 12px; color: #e0e0e0; }
+.modal p { color: #aaa; margin-bottom: 20px; font-size: 0.9rem; }
+.modal-buttons { display: flex; gap: 12px; justify-content: flex-end; }
+
+@media (max-width: 768px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  table { font-size: 0.8rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen">
+  <h1>1UP Station Admin</h1>
+  <p>Acesso restrito. Faca login com o Google do admin.</p>
+  <div id="g_id_onload"
+    data-client_id="89999411836-mi24elqjnuofqfh24qg5rvnld8o5vqic.apps.googleusercontent.com"
+    data-callback="handleCredentialResponse"
+    data-auto_prompt="false">
+  </div>
+  <div class="g_id_signin"
+    data-type="standard"
+    data-size="large"
+    data-theme="filled_black"
+    data-text="signin_with"
+    data-shape="rectangular">
+  </div>
+  <div id="login-error">Acesso negado. Apenas o admin pode acessar.</div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+  <!-- Header -->
+  <div class="header">
+    <h1>1UP Station Admin</h1>
+    <div class="header-user">
+      <img id="admin-photo" src="" alt="">
+      <span id="admin-name"></span>
+      <button class="btn-logout" onclick="logout()">Sair</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card"><div class="number" id="stat-users">-</div><div class="label">Usuarios</div></div>
+    <div class="stat-card"><div class="number" id="stat-used">-</div><div class="label">Convites usados</div></div>
+    <div class="stat-card"><div class="number" id="stat-pool">-</div><div class="label">Pool disponivel</div></div>
+    <div class="stat-card"><div class="number" id="stat-with-users">-</div><div class="label">Com usuarios</div></div>
+  </div>
+
+  <!-- Pool -->
+  <div class="section">
+    <h2>Pool de Convites</h2>
+    <div class="pool-controls">
+      <input type="number" id="pool-quantity" value="500" min="1" max="10000" placeholder="Quantidade">
+      <button class="btn btn-primary" id="btn-generate" onclick="generatePool()">Gerar</button>
+    </div>
+    <div class="pool-result" id="pool-result"></div>
+  </div>
+
+  <!-- Users -->
+  <div class="section">
+    <h2>Usuarios</h2>
+    <div id="users-loading" class="loading">Carregando...</div>
+    <table id="users-table" style="display:none">
+      <thead>
+        <tr><th>Foto</th><th>Nome</th><th>Google ID</th><th>Entrou em</th><th>Convidado por</th><th>Convites</th><th></th></tr>
+      </thead>
+      <tbody id="users-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Invites -->
+  <div class="section">
+    <h2>Convites</h2>
+    <div class="filters">
+      <button class="filter-btn active" onclick="filterInvites('all', this)">Todos</button>
+      <button class="filter-btn" onclick="filterInvites('available', this)">Disponiveis</button>
+      <button class="filter-btn" onclick="filterInvites('used', this)">Usados</button>
+    </div>
+    <div id="invites-loading" class="loading">Carregando...</div>
+    <table id="invites-table" style="display:none">
+      <thead>
+        <tr><th>Codigo</th><th>Gerado para</th><th>Status</th><th>Usado por</th><th>Data</th><th></th></tr>
+      </thead>
+      <tbody id="invites-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Confirm Modal -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal">
+    <h3 id="confirm-title">Confirmar</h3>
+    <p id="confirm-message"></p>
+    <div class="modal-buttons">
+      <button class="btn" style="background:#333;color:#aaa" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-danger" id="confirm-action">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let TOKEN = null;
+let allInvites = [];
+let currentFilter = 'all';
+
+// --- Google Sign-In ---
+function handleCredentialResponse(response) {
+  const jwt = response.credential;
+  // Decode payload to get user info
+  const payload = JSON.parse(atob(jwt.split('.')[1]));
+
+  // Test auth by calling stats endpoint
+  fetch('/admin/api/stats', { headers: { 'Authorization': 'Bearer ' + jwt } })
+    .then(r => {
+      if (r.status === 403) {
+        document.getElementById('login-error').style.display = 'block';
+        return;
+      }
+      TOKEN = jwt;
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('dashboard').style.display = 'block';
+      document.getElementById('admin-photo').src = payload.picture || '';
+      document.getElementById('admin-name').textContent = payload.name || payload.email;
+      loadAll();
+    })
+    .catch(() => {
+      document.getElementById('login-error').style.display = 'block';
+    });
+}
+
+function logout() {
+  TOKEN = null;
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  google.accounts.id.disableAutoSelect();
+}
+
+// --- API helpers ---
+function api(method, path, body) {
+  const opts = {
+    method,
+    headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+  };
+  if (body) opts.body = JSON.stringify(body);
+  return fetch(path, opts).then(r => r.json());
+}
+
+// --- Load data ---
+async function loadAll() {
+  await Promise.all([loadStats(), loadUsers(), loadInvites()]);
+}
+
+async function loadStats() {
+  try {
+    const s = await api('GET', '/admin/api/stats');
+    document.getElementById('stat-users').textContent = s.totalUsers;
+    document.getElementById('stat-used').textContent = s.invitesUsed;
+    document.getElementById('stat-pool').textContent = s.poolSize;
+    document.getElementById('stat-with-users').textContent = s.invitesWithUsers;
+  } catch {}
+}
+
+async function loadUsers() {
+  try {
+    const { users } = await api('GET', '/admin/api/users');
+    const tbody = document.getElementById('users-body');
+    tbody.innerHTML = '';
+
+    users.forEach(u => {
+      const date = new Date(u.registeredAt).toLocaleDateString('pt-BR');
+      const isAdmin = u.isAdmin;
+      // Count invites for this user
+      const userInvites = allInvites.filter(i => i.createdBy === u.googleId);
+      const usedCount = userInvites.filter(i => i.usedBy).length;
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${u.photoUrl ? '<img class="user-photo" src="' + u.photoUrl + '">' : '-'}</td>
+        <td>${esc(u.displayName)} ${isAdmin ? '<span class="badge badge-admin">admin</span>' : ''}</td>
+        <td><span class="google-id">${u.googleId.slice(0, 8)}...</span></td>
+        <td>${date}</td>
+        <td>${esc(u.invitedBy)}</td>
+        <td>${usedCount}/${userInvites.length}</td>
+        <td>${!isAdmin ? '<button class="btn btn-danger btn-small" onclick="confirmRevoke(\'' + u.googleId + '\', \'' + esc(u.displayName) + '\')">Revogar</button>' : ''}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById('users-loading').style.display = 'none';
+    document.getElementById('users-table').style.display = 'table';
+  } catch {}
+}
+
+async function loadInvites() {
+  try {
+    const { invites } = await api('GET', '/admin/api/invites');
+    allInvites = invites;
+    renderInvites();
+    document.getElementById('invites-loading').style.display = 'none';
+    document.getElementById('invites-table').style.display = 'table';
+    // Reload users table to update invite counts
+    loadUsers();
+  } catch {}
+}
+
+function renderInvites() {
+  const tbody = document.getElementById('invites-body');
+  tbody.innerHTML = '';
+
+  let filtered = allInvites;
+  if (currentFilter === 'available') filtered = allInvites.filter(i => !i.usedBy);
+  if (currentFilter === 'used') filtered = allInvites.filter(i => i.usedBy);
+
+  filtered.forEach(i => {
+    const date = new Date(i.usedAt || i.createdAt).toLocaleDateString('pt-BR');
+    const isUsed = !!i.usedBy;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-family:monospace;font-weight:600">${esc(i.code)}</td>
+      <td>${esc(i.createdByName)}</td>
+      <td>${isUsed ? '<span class="badge badge-used">Usado</span>' : '<span class="badge badge-available">Disponivel</span>'}</td>
+      <td>${isUsed ? esc(i.usedByName) : '-'}</td>
+      <td>${date}</td>
+      <td>${!isUsed ? '<button class="btn btn-danger btn-small" onclick="confirmInvalidate(\'' + esc(i.code) + '\')">Invalidar</button>' : ''}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function filterInvites(filter, btn) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderInvites();
+}
+
+// --- Pool ---
+async function generatePool() {
+  const btn = document.getElementById('btn-generate');
+  const input = document.getElementById('pool-quantity');
+  const result = document.getElementById('pool-result');
+  const qty = parseInt(input.value) || 100;
+
+  btn.disabled = true;
+  btn.textContent = 'Gerando...';
+  result.style.display = 'none';
+
+  try {
+    const data = await api('POST', '/admin/api/pool/generate', { quantidade: qty });
+    result.textContent = `${data.generated} codigos gerados. Pool agora tem ${data.poolSize} codigos.`;
+    result.style.color = '#4ade80';
+    result.style.display = 'block';
+    loadStats();
+  } catch (err) {
+    result.textContent = 'Erro ao gerar codigos.';
+    result.style.color = '#ff4444';
+    result.style.display = 'block';
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Gerar';
+}
+
+// --- Confirm dialogs ---
+function showModal(title, message, onConfirm) {
+  document.getElementById('confirm-title').textContent = title;
+  document.getElementById('confirm-message').textContent = message;
+  document.getElementById('confirm-modal').classList.add('active');
+
+  const confirmBtn = document.getElementById('confirm-action');
+  const newBtn = confirmBtn.cloneNode(true);
+  confirmBtn.parentNode.replaceChild(newBtn, confirmBtn);
+  newBtn.id = 'confirm-action';
+  newBtn.addEventListener('click', async () => {
+    newBtn.disabled = true;
+    await onConfirm();
+    closeModal();
+    newBtn.disabled = false;
+  });
+}
+
+function closeModal() {
+  document.getElementById('confirm-modal').classList.remove('active');
+}
+
+function confirmRevoke(googleId, name) {
+  showModal('Revogar acesso', `Tem certeza? ${name} vai perder acesso ao 1UP Station.`, async () => {
+    await api('POST', `/admin/api/users/${googleId}/revoke`);
+    await loadAll();
+  });
+}
+
+function confirmInvalidate(code) {
+  showModal('Invalidar convite', `Tem certeza? O codigo ${code} nao podera mais ser usado.`, async () => {
+    await api('POST', `/admin/api/invites/${code}/invalidate`);
+    await loadAll();
+  });
+}
+
+// --- Helpers ---
+function esc(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>

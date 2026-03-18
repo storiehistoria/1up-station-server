@@ -260,3 +260,83 @@ export async function validateInvite(code: string): Promise<{ valid: boolean; cr
     return { valid: false };
   }
 }
+
+// --- Admin dashboard functions ---
+
+export interface AdminStats {
+  totalUsers: number;
+  invitesUsed: number;
+  poolSize: number;
+  invitesWithUsers: number;
+}
+
+export async function getStats(): Promise<AdminStats> {
+  const [usersFile, invitesFile, poolFile] = await Promise.all([
+    readFile<UsersData>(USERS_PATH),
+    readFile<InvitesData>(INVITES_PATH),
+    readFile<PoolData>(POOL_PATH),
+  ]);
+
+  const used = invitesFile.parsed.invites.filter((i) => i.usedBy !== null).length;
+  const available = invitesFile.parsed.invites.filter((i) => i.usedBy === null).length;
+
+  return {
+    totalUsers: usersFile.parsed.users.length,
+    invitesUsed: used,
+    poolSize: poolFile.parsed.pool.length,
+    invitesWithUsers: available,
+  };
+}
+
+export async function getAllUsers(): Promise<UserData[]> {
+  const { parsed } = await readFile<UsersData>(USERS_PATH);
+  return parsed.users;
+}
+
+export async function getAllInvites(): Promise<InviteData[]> {
+  const { parsed } = await readFile<InvitesData>(INVITES_PATH);
+  return parsed.invites;
+}
+
+export async function revokeUser(googleId: string): Promise<boolean> {
+  return await withRetry(async () => {
+    const usersFile = await readFile<UsersData>(USERS_PATH);
+    const idx = usersFile.parsed.users.findIndex((u) => u.googleId === googleId);
+    if (idx === -1) return false;
+
+    const userName = usersFile.parsed.users[idx].displayName;
+    usersFile.parsed.users.splice(idx, 1);
+
+    await writeFile(
+      USERS_PATH,
+      usersFile.parsed,
+      usersFile.sha,
+      `Revoked: ${userName}`
+    );
+
+    console.log(`User revoked: ${userName} (${googleId})`);
+    return true;
+  });
+}
+
+export async function invalidateInvite(code: string): Promise<boolean> {
+  return await withRetry(async () => {
+    const invitesFile = await readFile<InvitesData>(INVITES_PATH);
+    const idx = invitesFile.parsed.invites.findIndex(
+      (i) => i.code === code && i.usedBy === null
+    );
+    if (idx === -1) return false;
+
+    invitesFile.parsed.invites.splice(idx, 1);
+
+    await writeFile(
+      INVITES_PATH,
+      invitesFile.parsed,
+      invitesFile.sha,
+      `Invite invalidated: ${code}`
+    );
+
+    console.log(`Invite invalidated: ${code}`);
+    return true;
+  });
+}
