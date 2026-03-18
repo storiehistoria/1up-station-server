@@ -1,11 +1,25 @@
 import { Room, Client } from "colyseus";
 import { LobbyState } from "../schemas/LobbyState";
 import { PlayerState, Presence } from "../schemas/PlayerState";
-import { ChatMessage } from "../schemas/ChatMessage";
 import { Invite } from "../schemas/Invite";
 import { findUser, assignCodesToNewUser, ADMIN_GOOGLE_ID } from "../services/InvitePool";
 
 const MAX_CHAT_HISTORY = 50;
+
+interface ChatMsg {
+  id: string;
+  senderId: string;
+  senderNickname: string;
+  senderPhoto: string;
+  text: string;
+  timestamp: number;
+  type: "user" | "system";
+}
+
+let msgCounter = 0;
+function generateMsgId(): string {
+  return `msg_${Date.now()}_${++msgCounter}`;
+}
 
 let inviteCounter = 0;
 function generateInviteId(): string {
@@ -13,6 +27,8 @@ function generateInviteId(): string {
 }
 
 export class LobbyRoom extends Room<LobbyState> {
+  private chatHistory: ChatMsg[] = [];
+
   onCreate() {
     this.state = new LobbyState();
     this.maxClients = 100;
@@ -76,7 +92,6 @@ export class LobbyRoom extends Room<LobbyState> {
       }
     });
     for (const sessionId of toRemove) {
-      // Remove from state immediately to avoid duplicate in player list
       this.state.players.delete(sessionId);
       const oldClient = this.clients.find((c) => c.sessionId === sessionId);
       if (oldClient) {
@@ -98,6 +113,12 @@ export class LobbyRoom extends Room<LobbyState> {
     this.state.players.set(client.sessionId, player);
     console.log(`${displayName} joined the lobby`);
 
+    // Send chat history to the new client
+    client.send("chatHistory", this.chatHistory);
+
+    // System message: player joined
+    this.broadcastSystemMessage(`${displayName} entrou no lobby`);
+
     // Assign pool codes to new users (async, don't block join)
     if (googleId !== ADMIN_GOOGLE_ID) {
       this.assignPoolCodes(googleId, displayName, options.email || "", options.photoUrl || "").catch((err) => {
@@ -108,7 +129,7 @@ export class LobbyRoom extends Room<LobbyState> {
 
   private async assignPoolCodes(googleId: string, displayName: string, email: string, photoUrl: string) {
     const existing = await findUser(googleId);
-    if (existing) return; // Already registered, skip
+    if (existing) return;
 
     const codes = await assignCodesToNewUser(googleId, displayName, email, photoUrl, "POOL");
     if (codes.length > 0) {
@@ -120,15 +141,21 @@ export class LobbyRoom extends Room<LobbyState> {
     const player = this.state.players.get(client.sessionId);
     if (player) {
       console.log(`${player.nickname} left the lobby`);
+      // System message: player left
+      this.broadcastSystemMessage(`${player.nickname} saiu do lobby`);
     }
     this.state.players.delete(client.sessionId);
 
     // Clean up invites involving this player
+    const invitesToRemove: string[] = [];
     this.state.invites.forEach((invite: Invite, key: string) => {
       if (invite.fromSessionId === client.sessionId || invite.toSessionId === client.sessionId) {
-        this.state.invites.delete(key);
+        invitesToRemove.push(key);
       }
     });
+    for (const key of invitesToRemove) {
+      this.state.invites.delete(key);
+    }
   }
 
   private handleChat(client: Client, text: string) {
@@ -137,18 +164,41 @@ export class LobbyRoom extends Room<LobbyState> {
 
     const sanitized = text.trim().slice(0, 200);
 
-    const msg = new ChatMessage();
-    msg.senderSessionId = client.sessionId;
-    msg.senderNickname = player.nickname;
-    msg.text = sanitized;
-    msg.timestamp = Date.now();
+    const msg: ChatMsg = {
+      id: generateMsgId(),
+      senderId: player.googleId,
+      senderNickname: player.nickname,
+      senderPhoto: player.photoUrl,
+      text: sanitized,
+      timestamp: Date.now(),
+      type: "user",
+    };
 
-    this.state.chatHistory.push(msg);
-
-    // Trim old messages
-    while (this.state.chatHistory.length > MAX_CHAT_HISTORY) {
-      this.state.chatHistory.shift();
+    this.chatHistory.push(msg);
+    if (this.chatHistory.length > MAX_CHAT_HISTORY) {
+      this.chatHistory.shift();
     }
+
+    this.broadcast("chat", msg);
+  }
+
+  private broadcastSystemMessage(text: string) {
+    const msg: ChatMsg = {
+      id: generateMsgId(),
+      senderId: "system",
+      senderNickname: "sistema",
+      senderPhoto: "",
+      text,
+      timestamp: Date.now(),
+      type: "system",
+    };
+
+    this.chatHistory.push(msg);
+    if (this.chatHistory.length > MAX_CHAT_HISTORY) {
+      this.chatHistory.shift();
+    }
+
+    this.broadcast("chat", msg);
   }
 
   private handleSetNickname(client: Client, nickname: string) {
@@ -184,7 +234,6 @@ export class LobbyRoom extends Room<LobbyState> {
 
     this.state.invites.set(invite.id, invite);
 
-    // Notify the target player directly
     const targetClient = this.clients.find((c) => c.sessionId === toSessionId);
     if (targetClient) {
       targetClient.send("inviteReceived", {
@@ -203,7 +252,6 @@ export class LobbyRoom extends Room<LobbyState> {
 
     invite.status = accept ? "accepted" : "declined";
 
-    // Notify the inviter
     const inviterClient = this.clients.find((c) => c.sessionId === invite.fromSessionId);
     if (inviterClient) {
       inviterClient.send("inviteResult", {
@@ -214,7 +262,6 @@ export class LobbyRoom extends Room<LobbyState> {
       });
     }
 
-    // Clean up after a delay
     this.clock.setTimeout(() => {
       this.state.invites.delete(inviteId);
     }, 5000);
