@@ -6,7 +6,7 @@ import { MachineState } from "../schemas/MachineState";
 import { findUser, assignCodesToNewUser, ADMIN_GOOGLE_ID } from "../services/InvitePool";
 
 const MAX_CHAT_HISTORY = 50;
-const NUM_MACHINES = 10;
+const NUM_MACHINES = 12;
 const PING_WAIT_DELAY = 5000; // 5s before requesting pings
 const PING_TIMEOUT = 3000; // 3s to collect pings
 
