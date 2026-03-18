@@ -24,6 +24,7 @@ import {
   unbanUser,
   addAdminLog,
   getAdminLogs,
+  updateNickname,
 } from "./services/InvitePool";
 
 const port = Number(process.env.PORT) || 2567;
@@ -376,6 +377,41 @@ app.get("/api/invites/:googleId", async (req, res) => {
     res.json({ invites });
   } catch (err: any) {
     res.status(500).json({ invites: [] });
+  }
+});
+
+app.post("/api/user/:googleId/nickname", async (req, res) => {
+  try {
+    const googleId = req.params.googleId as string;
+    const nickname = (req.body.nickname || "").trim().slice(0, 20);
+    if (nickname.length < 2) {
+      res.status(400).json({ error: "Nickname deve ter no minimo 2 caracteres" });
+      return;
+    }
+    const success = await updateNickname(googleId, nickname);
+    res.json({ success });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/user/:googleId/nickname", async (req, res) => {
+  try {
+    const googleId = req.params.googleId as string;
+    const { nickname } = req.body;
+    if (!nickname || typeof nickname !== "string" || nickname.trim().length < 2 || nickname.trim().length > 20) {
+      res.status(400).json({ success: false, error: "Nickname deve ter entre 2 e 20 caracteres" });
+      return;
+    }
+    const clean = nickname.trim().replace(/[^a-zA-Z0-9\u00C0-\u024F\s_-]/g, "").trim();
+    if (clean.length < 2) {
+      res.status(400).json({ success: false, error: "Nickname invalido" });
+      return;
+    }
+    const success = await updateNickname(googleId, clean);
+    res.json({ success });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

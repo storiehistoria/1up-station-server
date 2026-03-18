@@ -300,7 +300,11 @@ function renderUsers() {
   tbody.innerHTML = '';
   const query = (document.getElementById('user-search').value || '').toLowerCase();
 
-  const filtered = query ? allUsers.filter(u => u.displayName.toLowerCase().includes(query)) : allUsers;
+  const filtered = query ? allUsers.filter(u => {
+    const name = (u.nickname || u.displayName || '').toLowerCase();
+    const gname = (u.displayName || '').toLowerCase();
+    return name.includes(query) || gname.includes(query);
+  }) : allUsers;
 
   filtered.forEach(u => {
     const date = new Date(u.registeredAt).toLocaleDateString('pt-BR');
@@ -322,15 +326,16 @@ function renderUsers() {
     // Action buttons
     let actions = '';
     if (!isAdmin) {
-      actions += '<button class="btn btn-primary btn-small" onclick="openAddInvites(\'' + u.googleId + '\', \'' + esc(u.displayName) + '\')" style="margin-right:6px">+ Convites</button>';
+      const userName = esc(u.nickname || u.displayName);
+      actions += '<button class="btn btn-primary btn-small" onclick="openAddInvites(\'' + u.googleId + '\', \'' + userName + '\')" style="margin-right:6px">+ Convites</button>';
 
       if (u.ban) {
-        actions += '<button class="btn btn-success btn-small" onclick="confirmUnban(\'' + u.googleId + '\', \'' + esc(u.displayName) + '\')">Desbanir</button>';
+        actions += '<button class="btn btn-success btn-small" onclick="confirmUnban(\'' + u.googleId + '\', \'' + userName + '\')">Desbanir</button>';
       } else {
         actions += '<div class="dropdown" style="display:inline-block"><button class="dropdown-toggle" onclick="toggleDropdown(event)">Revogar &#9660;</button><div class="dropdown-menu">';
-        actions += '<button class="dropdown-item" onclick="confirmBan(\'' + u.googleId + '\', \'' + esc(u.displayName) + '\', \'temporary\', 7)">Banir temporariamente (7 dias)</button>';
-        actions += '<button class="dropdown-item" onclick="confirmBan(\'' + u.googleId + '\', \'' + esc(u.displayName) + '\', \'temporary\', 30)">Banir temporariamente (30 dias)</button>';
-        actions += '<button class="dropdown-item" style="color:#ff4444" onclick="confirmBan(\'' + u.googleId + '\', \'' + esc(u.displayName) + '\', \'permanent\')">Banir permanentemente</button>';
+        actions += '<button class="dropdown-item" onclick="confirmBan(\'' + u.googleId + '\', \'' + userName + '\', \'temporary\', 7)">Banir temporariamente (7 dias)</button>';
+        actions += '<button class="dropdown-item" onclick="confirmBan(\'' + u.googleId + '\', \'' + userName + '\', \'temporary\', 30)">Banir temporariamente (30 dias)</button>';
+        actions += '<button class="dropdown-item" style="color:#ff4444" onclick="confirmBan(\'' + u.googleId + '\', \'' + userName + '\', \'permanent\')">Banir permanentemente</button>';
         actions += '</div></div>';
       }
     }
@@ -338,7 +343,7 @@ function renderUsers() {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${u.photoUrl ? '<img class="user-photo" src="' + u.photoUrl + '">' : '-'}</td>
-      <td>${esc(u.displayName)} ${isAdmin ? '<span class="badge badge-admin">admin</span>' : ''}${banBadge}</td>
+      <td>${esc(u.nickname || u.displayName)}${u.nickname && u.nickname !== u.displayName ? ' <span class="google-id">(Google: ' + esc(u.displayName) + ')</span>' : ''} ${isAdmin ? '<span class="badge badge-admin">admin</span>' : ''}${banBadge}</td>
       <td><span class="google-id">${u.googleId.slice(0, 8)}...</span></td>
       <td>${date}</td>
       <td>${esc(u.invitedBy)}</td>

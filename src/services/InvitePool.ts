@@ -38,6 +38,7 @@ export interface BanData {
 export interface UserData {
   googleId: string;
   displayName: string;
+  nickname?: string;
   email: string;
   photoUrl: string;
   invitedBy: string;
@@ -550,4 +551,27 @@ export async function getAdminLogs(limit = 50): Promise<AdminLogEntry[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * Update a user's nickname in users.json
+ */
+export async function updateNickname(googleId: string, nickname: string): Promise<boolean> {
+  return await withRetry(async () => {
+    const usersFile = await readFile<UsersData>(USERS_PATH);
+    const user = usersFile.parsed.users.find((u) => u.googleId === googleId);
+    if (!user) return false;
+
+    user.nickname = nickname;
+
+    await writeFile(
+      USERS_PATH,
+      usersFile.parsed,
+      usersFile.sha,
+      `Nickname: ${user.displayName} -> ${nickname}`
+    );
+
+    console.log(`Nickname updated: ${user.displayName} -> ${nickname}`);
+    return true;
+  });
 }
