@@ -58,6 +58,11 @@ export class LobbyRoom extends Room<LobbyState> {
       this.state.machines.set(String(i), machine);
     }
 
+    // --- Heartbeat (keep proxy alive) ---
+    this.onMessage("heartbeat", (client) => {
+      client.send("heartbeat");
+    });
+
     // --- Chat ---
     this.onMessage("chat", (client, data: { text: string }) => {
       this.handleChat(client, data.text);
