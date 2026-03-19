@@ -253,11 +253,6 @@ export class LobbyRoom extends Room<LobbyState> {
       type: "system",
     };
 
-    this.chatHistory.push(msg);
-    if (this.chatHistory.length > MAX_CHAT_HISTORY) {
-      this.chatHistory.shift();
-    }
-
     if (except) {
       this.broadcast("chat", msg, { except });
     } else {
