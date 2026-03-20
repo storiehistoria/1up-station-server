@@ -109,6 +109,11 @@ export class LobbyRoom extends Room<LobbyState> {
       this.handleMachinePing(client, data.machineId, data.pingMs);
     });
 
+    // Host sends the real Dolphin traversal code after launching
+    this.onMessage("machine:traversalCode", (client, data: { machineId: number; traversalCode: string }) => {
+      this.handleTraversalCode(client, data.machineId, data.traversalCode);
+    });
+
     console.log("LobbyRoom created");
   }
 
@@ -622,20 +627,56 @@ export class LobbyRoom extends Room<LobbyState> {
     const buffer = Math.max(Math.ceil(maxPing / 16), 1);
     const hostCode = generateHostCode();
 
-    console.log(`Machine ${machineId} ready — maxPing: ${maxPing}ms, buffer: ${buffer}, hostCode: ${hostCode}`);
+    console.log(`Machine ${machineId} ready — maxPing: ${maxPing}ms, buffer: ${buffer}`);
 
-    // Send ready to all players
+    // Send ready ONLY to the host — host will launch Dolphin and report the traversal code
+    const hostClient = this.findClientByGoogleId(machine.hostGoogleId);
+    if (hostClient) {
+      hostClient.send("machine:ready", {
+        machineId,
+        buffer,
+        hostCode: "", // not used anymore — real traversal code comes from Dolphin
+        gameName: machine.gameName,
+        isHost: true,
+        maxPing,
+        pings: Object.fromEntries(pending.pings),
+      });
+    }
+
+    // Non-host players wait for the traversal code
     for (const googleId of machine.playerGoogleIds) {
+      if (googleId === machine.hostGoogleId) continue;
       const client = this.findClientByGoogleId(googleId);
       if (client) {
-        client.send("machine:ready", {
+        client.send("machine:waitingHost", {
           machineId,
-          buffer,
-          hostCode,
           gameName: machine.gameName,
-          isHost: googleId === machine.hostGoogleId,
-          maxPing,
-          pings: Object.fromEntries(pending.pings),
+        });
+      }
+    }
+  }
+
+  private handleTraversalCode(client: Client, machineId: number, traversalCode: string) {
+    const googleId = this.findPlayerGoogleId(client);
+    if (!googleId) return;
+
+    const machine = this.state.machines.get(String(machineId));
+    if (!machine || machine.status !== "playing") return;
+
+    // Only the host can send the traversal code
+    if (googleId !== machine.hostGoogleId) return;
+
+    console.log(`[NETPLAY 4] SERVIDOR: Traversal code recebido: ${traversalCode}, repassando pro cliente...`);
+
+    // Send the real join code to all non-host players
+    for (const playerId of machine.playerGoogleIds) {
+      if (playerId === machine.hostGoogleId) continue;
+      const playerClient = this.findClientByGoogleId(playerId);
+      if (playerClient) {
+        playerClient.send("machine:joinCode", {
+          machineId,
+          traversalCode,
+          gameName: machine.gameName,
         });
       }
     }
